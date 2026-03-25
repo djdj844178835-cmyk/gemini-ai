@@ -418,7 +418,17 @@ function ChatApp() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const text = await response.text();
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(text);
+        } catch (e) {
+          console.error("Non-JSON error response from server:", text);
+          if (text.includes("<!doctype html>") || text.includes("<html>")) {
+            throw new Error(`服务器返回了 HTML 页面而非 JSON (状态码: ${response.status})。这通常意味着 API 路由未正确匹配或服务器正在重启。请稍后重试。`);
+          }
+          throw new Error(`服务器返回了非 JSON 响应 (状态码: ${response.status})。内容: ${text.slice(0, 100)}...`);
+        }
         throw new Error(errorData.error || `服务器错误: ${response.status}`);
       }
       
