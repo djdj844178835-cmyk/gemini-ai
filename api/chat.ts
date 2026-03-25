@@ -62,7 +62,7 @@ export default async function handler(req: Request) {
   } catch (error: any) {
     console.error("[Vercel Edge Fatal Error]", error);
     return new Response(JSON.stringify({ 
-      error: `网络连接失败: ${error.message}。请检查您的接口地址 ${requestBaseUrl} 是否正确。` 
+      error: `网络连接失败: ${error.message}。请检查您的接口地址是否正确。` 
     }), { 
       status: 500,
       headers: { 'Content-Type': 'application/json' }

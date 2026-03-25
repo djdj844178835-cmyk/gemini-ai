@@ -349,33 +349,47 @@ function ChatApp() {
 
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
+    
+    console.log("sendMessage triggered");
+    toast.info("正在发送消息...");
 
-    let sessionId = currentSessionId;
-    if (!sessionId) {
-      const newSession: ChatSession = {
-        id: Date.now().toString(),
-        title: input.slice(0, 30) || '新对话',
-        messages: [],
-        updatedAt: Date.now()
-      };
-      setSessions([newSession, ...sessions]);
-      setCurrentSessionId(newSession.id);
-      sessionId = newSession.id;
-    }
-
+    const currentInput = input;
+    const currentAttachments = [...attachments];
+    const currentSessionIdLocal = currentSessionId;
+    
+    let sessionId = currentSessionIdLocal;
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: currentInput,
       timestamp: Date.now(),
-      attachments: attachments.length > 0 ? [...attachments] : undefined
+      attachments: currentAttachments.length > 0 ? currentAttachments : undefined
     };
 
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId 
-        ? { ...s, messages: [...s.messages, userMessage], updatedAt: Date.now(), title: s.messages.length === 0 ? input.slice(0, 30) || '新对话' : s.title }
-        : s
-    ));
+    // 1. Update sessions and currentSessionId in one go if needed
+    if (!sessionId) {
+      const newSessionId = Date.now().toString();
+      const newSession: ChatSession = {
+        id: newSessionId,
+        title: currentInput.slice(0, 30) || '新对话',
+        messages: [userMessage],
+        updatedAt: Date.now()
+      };
+      setSessions(prev => [newSession, ...prev]);
+      setCurrentSessionId(newSessionId);
+      sessionId = newSessionId;
+    } else {
+      setSessions(prev => prev.map(s => 
+        s.id === sessionId 
+          ? { 
+              ...s, 
+              messages: [...s.messages, userMessage], 
+              updatedAt: Date.now(),
+              title: s.messages.length === 0 ? currentInput.slice(0, 30) || '新对话' : s.title 
+            }
+          : s
+      ));
+    }
 
     setInput('');
     setAttachments([]);
@@ -385,20 +399,30 @@ function ChatApp() {
     abortControllerRef.current = controller;
 
     try {
-      // Prepare messages for OpenAI format (proxy server expects this)
+      // Prepare messages for OpenAI format
       const systemMessage = { role: 'system', content: "你是一个极其专业的助手。请详尽、有逻辑地回答问题，不要偷懒。" };
-      const history = currentSession?.messages.map(m => ({
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content
-      })) || [];
+      
+      // Get history from the sessions state (using functional update to get latest)
+      let history: any[] = [];
+      setSessions(prev => {
+        const session = prev.find(s => s.id === sessionId);
+        if (session) {
+          // Exclude the last message (the user message we just added) for history
+          // because we'll add it manually in the fetch body
+          history = session.messages.slice(0, -1).map(m => ({
+            role: m.role === 'user' ? 'user' : 'assistant',
+            content: m.content
+          }));
+        }
+        return prev;
+      });
 
-      // Handle attachments by appending to content or using vision format
-      const promptWithSuffix = input + " (请详细回复，字数多一点)";
+      const promptWithSuffix = currentInput + " (请详细回复，字数多一点)";
       let finalContent: any = promptWithSuffix;
-      if (attachments.length > 0) {
+      if (currentAttachments.length > 0) {
         finalContent = [
           { type: "text", text: promptWithSuffix },
-          ...attachments.map(att => ({
+          ...currentAttachments.map(att => ({
             type: "image_url",
             image_url: { url: att.url }
           }))
@@ -439,7 +463,7 @@ function ChatApp() {
       const decoder = new TextDecoder();
       let aiContent = "";
       
-      const aiMessageId = (Date.now() + 1).toString();
+      const aiMessageId = (Date.now() + 2).toString();
       const initialAiMessage: Message = {
         id: aiMessageId,
         role: 'model',
@@ -447,7 +471,7 @@ function ChatApp() {
         timestamp: Date.now()
       };
 
-      // Add empty message first
+      // Add empty message
       setSessions(prev => prev.map(s => 
         s.id === sessionId 
           ? { ...s, messages: [...s.messages, initialAiMessage], updatedAt: Date.now() }
@@ -463,7 +487,7 @@ function ChatApp() {
             
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
-            buffer = lines.pop() || ""; // Keep the last incomplete line in buffer
+            buffer = lines.pop() || "";
             
             for (const line of lines) {
               const trimmedLine = line.trim();
@@ -477,7 +501,6 @@ function ChatApp() {
                 const content = data.choices?.[0]?.delta?.content || "";
                 if (content) {
                   aiContent += content;
-                  // Update the message content in real-time
                   setSessions(prev => prev.map(s => 
                     s.id === sessionId 
                       ? { 
@@ -489,20 +512,23 @@ function ChatApp() {
                       : s
                   ));
                 }
-              } catch (e) {
-                // Ignore parse errors for partial chunks
-              }
+              } catch (e) {}
             }
           }
         } catch (error: any) {
           if (error.name === 'AbortError') throw error;
-          console.error("Stream reading error:", error);
           aiContent += "\n\n[连接中断，请重试]";
+          setSessions(prev => prev.map(s => 
+            s.id === sessionId 
+              ? { 
+                  ...s, 
+                  messages: s.messages.map(m => 
+                    m.id === aiMessageId ? { ...m, content: aiContent } : m
+                  ) 
+                }
+              : s
+          ));
         }
-      }
-
-      if (!aiContent && !response.body) {
-        throw new Error("服务器未返回有效内容。");
       }
     } catch (error: any) {
       if (error.name === 'AbortError') {
