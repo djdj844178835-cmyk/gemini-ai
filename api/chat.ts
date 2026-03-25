@@ -21,28 +21,50 @@ export default async function handler(req: any, res: any) {
     }
 
     // 规范化 Base URL
-    let finalBaseUrl = (requestBaseUrl || process.env.THIRD_PARTY_API_BASE_URL || "https://new.xiaweiliang.cn/v1").trim();
-    if (!finalBaseUrl.startsWith("http")) {
-      finalBaseUrl = `https://${finalBaseUrl}`;
+    let baseUrlInput = (requestBaseUrl || process.env.THIRD_PARTY_API_BASE_URL || "https://new.xiaweiliang.cn/v1").trim();
+    
+    // 自动修正常见的 URL 错误
+    if (!baseUrlInput.startsWith("http")) {
+      baseUrlInput = `https://${baseUrlInput}`;
     }
-    finalBaseUrl = finalBaseUrl.replace(/\/+$/, "").replace(/\/chat\/completions$/, "");
+    
+    // 移除末尾多余的路径，OpenAI SDK 会自动处理 /chat/completions
+    let finalBaseUrl = baseUrlInput
+      .replace(/\/+$/, "")
+      .replace(/\/chat\/completions$/, "");
 
-    console.log(`[Vercel Proxy] Calling ${model} at ${finalBaseUrl}`);
+    console.log(`[Vercel Proxy] Attempting to connect to: ${finalBaseUrl} with model: ${model}`);
 
     const openai = new OpenAI({
       apiKey: apiKey,
       baseURL: finalBaseUrl,
-      maxRetries: 1,
+      maxRetries: 0, // 减少重试以避免触发 Vercel 超时
+      timeout: 25000, // 设置一个合理的超时
     });
 
-    const response = await openai.chat.completions.create({
-      model: model,
-      messages: messages,
-      max_tokens: 4000,
-      temperature: 0.7,
-    });
+    try {
+      const response = await openai.chat.completions.create({
+        model: model,
+        messages: messages,
+        max_tokens: 4000,
+        temperature: 0.7,
+      });
 
-    return res.status(200).json(response);
+      return res.status(200).json(response);
+    } catch (apiError: any) {
+      console.error("[Upstream API Error]", apiError);
+      
+      // 区分是网络连接错误还是 API 逻辑错误
+      if (apiError.code === 'ENOTFOUND' || apiError.code === 'ECONNREFUSED') {
+        return res.status(502).json({ error: `无法连接到接口服务器 (${finalBaseUrl})，请检查接口地址是否填写正确。` });
+      }
+      
+      if (apiError.status === 401) {
+        return res.status(401).json({ error: "API Key 错误或已失效，请检查您的密钥。" });
+      }
+
+      throw apiError; // 抛给外层处理
+    }
   } catch (error: any) {
     console.error("[Vercel Proxy Error]", error);
     
