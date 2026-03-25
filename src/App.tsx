@@ -423,9 +423,11 @@ function ChatApp() {
         try {
           errorData = JSON.parse(text);
         } catch (e) {
-          console.error("Non-JSON error response from server:", text);
+          if (response.status === 504) {
+            throw new Error("请求超时 (504)：模型思考时间过长，超过了 Vercel 免费版的限制。建议切换到非 Max 版本的模型（如 Gemini 3 Flash）以获得更快的响应。");
+          }
           if (text.includes("<!doctype html>") || text.includes("<html>")) {
-            throw new Error(`服务器返回了 HTML 页面而非 JSON (状态码: ${response.status})。这通常意味着 API 路由未正确匹配或服务器正在重启。请稍后重试。`);
+            throw new Error(`服务器返回了 HTML 页面而非 JSON (状态码: ${response.status})。这通常意味着 API 路由未正确匹配或服务器正在重启。`);
           }
           throw new Error(`服务器返回了非 JSON 响应 (状态码: ${response.status})。内容: ${text.slice(0, 100)}...`);
         }
