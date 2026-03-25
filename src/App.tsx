@@ -432,21 +432,76 @@ function ChatApp() {
         throw new Error(errorData.error || `服务器错误: ${response.status}`);
       }
       
-      const data = await response.json();
-      const aiContent = data.choices?.[0]?.message?.content || "抱歉，我无法生成回复。";
-
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let aiContent = "";
+      
+      const aiMessageId = (Date.now() + 1).toString();
+      const initialAiMessage: Message = {
+        id: aiMessageId,
         role: 'model',
-        content: aiContent,
+        content: "",
         timestamp: Date.now()
       };
 
+      // Add empty message first
       setSessions(prev => prev.map(s => 
         s.id === sessionId 
-          ? { ...s, messages: [...s.messages, aiMessage], updatedAt: Date.now() }
+          ? { ...s, messages: [...s.messages, initialAiMessage], updatedAt: Date.now() }
           : s
       ));
+
+      if (reader) {
+        let buffer = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ""; // Keep the last incomplete line in buffer
+            
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
+              
+              const dataStr = trimmedLine.slice(6).trim();
+              if (dataStr === '[DONE]') break;
+              
+              try {
+                const data = JSON.parse(dataStr);
+                const content = data.choices?.[0]?.delta?.content || "";
+                if (content) {
+                  aiContent += content;
+                  // Update the message content in real-time
+                  setSessions(prev => prev.map(s => 
+                    s.id === sessionId 
+                      ? { 
+                          ...s, 
+                          messages: s.messages.map(m => 
+                            m.id === aiMessageId ? { ...m, content: aiContent } : m
+                          ) 
+                        }
+                      : s
+                  ));
+                }
+              } catch (e) {
+                // Ignore parse errors for partial chunks
+              }
+            }
+          }
+        } catch (error: any) {
+          if (error.name === 'AbortError') throw error;
+          console.error("Stream reading error:", error);
+          aiContent += "\n\n[连接中断，请重试]";
+        }
+      }
+
+      if (!aiContent && !response.body) {
+        throw new Error("服务器未返回有效内容。");
+      }
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log('Fetch aborted');
