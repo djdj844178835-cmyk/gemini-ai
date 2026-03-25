@@ -1,82 +1,79 @@
-import OpenAI from "openai";
-
 export const config = {
-  maxDuration: 60, // 增加超时时间
+  maxDuration: 60,
 };
 
 export default async function handler(req: any, res: any) {
-  // 仅允许 POST 请求
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  const { messages, model, baseUrl: requestBaseUrl, apiKey: requestApiKey } = req.body;
+
+  // 1. 获取并清理 API Key
+  const apiKey = (requestApiKey || process.env.THIRD_PARTY_API_KEY || "sk-vU5dTGQDuUVDxoqI2E8tYOyQfG5a8tpEWEoe3csyQ9VNMmVB").trim();
+  
+  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+    return res.status(401).json({ error: "未检测到有效的 API Key。请在设置中填写。" });
+  }
+
+  // 2. 规范化 Base URL
+  let baseUrlInput = (requestBaseUrl || process.env.THIRD_PARTY_API_BASE_URL || "https://new.xiaweiliang.cn/v1").trim();
+  if (!baseUrlInput.startsWith("http")) {
+    baseUrlInput = `https://${baseUrlInput}`;
+  }
+  // 确保以 /v1 结尾或根据通用规则处理
+  let finalBaseUrl = baseUrlInput.replace(/\/+$/, "");
+  const apiUrl = `${finalBaseUrl}/chat/completions`;
+
+  console.log(`[Vercel Proxy] Requesting: ${apiUrl} | Model: ${model}`);
+
+  // 3. 使用原生 fetch 发起请求，避免 SDK 兼容性问题
   try {
-    const { messages, model, baseUrl: requestBaseUrl, apiKey: requestApiKey } = req.body;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 延长到 60 秒超时
 
-    // 密钥获取逻辑：请求参数 > 环境变量 > 默认硬编码
-    const apiKey = (requestApiKey || process.env.THIRD_PARTY_API_KEY || "sk-vU5dTGQDuUVDxoqI2E8tYOyQfG5a8tpEWEoe3csyQ9VNMmVB").trim();
-    
-    if (!apiKey || apiKey === "undefined" || apiKey === "") {
-      return res.status(401).json({ error: "未检测到有效的 API Key。请检查设置。" });
-    }
-
-    // 规范化 Base URL
-    let baseUrlInput = (requestBaseUrl || process.env.THIRD_PARTY_API_BASE_URL || "https://new.xiaweiliang.cn/v1").trim();
-    
-    // 自动修正常见的 URL 错误
-    if (!baseUrlInput.startsWith("http")) {
-      baseUrlInput = `https://${baseUrlInput}`;
-    }
-    
-    // 移除末尾多余的路径，OpenAI SDK 会自动处理 /chat/completions
-    let finalBaseUrl = baseUrlInput
-      .replace(/\/+$/, "")
-      .replace(/\/chat\/completions$/, "");
-
-    console.log(`[Vercel Proxy] Attempting to connect to: ${finalBaseUrl} with model: ${model}`);
-
-    const openai = new OpenAI({
-      apiKey: apiKey,
-      baseURL: finalBaseUrl,
-      maxRetries: 0, // 减少重试以避免触发 Vercel 超时
-      timeout: 25000, // 设置一个合理的超时
-    });
-
-    try {
-      const response = await openai.chat.completions.create({
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         model: model,
         messages: messages,
-        max_tokens: 4000,
-        temperature: 0.7,
-      });
+        stream: false, // 暂时关闭流式以确保稳定性
+      }),
+      signal: controller.signal
+    });
 
-      return res.status(200).json(response);
-    } catch (apiError: any) {
-      console.error("[Upstream API Error]", apiError);
-      
-      // 区分是网络连接错误还是 API 逻辑错误
-      if (apiError.code === 'ENOTFOUND' || apiError.code === 'ECONNREFUSED') {
-        return res.status(502).json({ error: `无法连接到接口服务器 (${finalBaseUrl})，请检查接口地址是否填写正确。` });
-      }
-      
-      if (apiError.status === 401) {
-        return res.status(401).json({ error: "API Key 错误或已失效，请检查您的密钥。" });
-      }
+    clearTimeout(timeoutId);
 
-      throw apiError; // 抛给外层处理
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      console.error("[Upstream Error]", response.status, data);
+      const errorMsg = data?.error?.message || data?.error || response.statusText;
+      
+      if (response.status === 404) {
+        return res.status(404).json({ error: `接口路径错误(404)。请检查 Base URL 是否多写或少写了 /v1。当前尝试地址: ${apiUrl}` });
+      }
+      if (response.status === 401) {
+        return res.status(401).json({ error: "API Key 验证失败，请检查密钥是否正确。" });
+      }
+      return res.status(response.status).json({ error: `上游服务报错: ${errorMsg}` });
     }
+
+    return res.status(200).json(data);
+
   } catch (error: any) {
-    console.error("[Vercel Proxy Error]", error);
+    console.error("[Vercel Proxy Fatal Error]", error);
     
-    const status = error.status || 500;
-    let message = error.message || "Internal Server Error";
-    
-    if (status === 404) {
-      message = "接口地址(404)错误：请检查 Base URL 是否正确。";
-    } else if (message.includes('Unexpected token <')) {
-      message = "上游接口返回了非 JSON 内容。请检查 Base URL 是否填成了网页地址。";
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: "请求超时：第三方 API 服务器响应过慢，请稍后再试或更换模型。" });
     }
     
-    return res.status(status).json({ error: message });
+    return res.status(500).json({ 
+      error: `网络连接失败: ${error.message}。这通常是由于 Vercel 无法访问您的接口地址 ${apiUrl} 导致的，请检查地址是否填写正确。` 
+    });
   }
 }
