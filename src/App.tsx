@@ -576,13 +576,28 @@ function ChatApp() {
         </div>
 
         <div className="p-4 border-t border-[var(--border-color)] space-y-1">
-          <button 
+          <div 
             onClick={toggleTheme}
-            className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-[var(--bg-hover)] text-sm text-[var(--text-main)]"
+            className="flex items-center justify-between w-full p-2 rounded-lg hover:bg-[var(--bg-hover)] text-sm text-[var(--text-main)] cursor-pointer group"
           >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            <span>{theme === 'dark' ? '白天模式' : '夜间模式'}</span>
-          </button>
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "relative w-9 h-5 rounded-full transition-colors duration-200 flex items-center px-1",
+                theme === 'dark' ? "bg-blue-600" : "bg-gray-400"
+              )}>
+                <motion.div 
+                  layout
+                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  className={cn(
+                    "w-3.5 h-3.5 bg-white rounded-full shadow-sm",
+                    theme === 'dark' ? "ml-auto" : "mr-auto"
+                  )} 
+                />
+              </div>
+              <span>{theme === 'dark' ? '白天模式' : '夜间模式'}</span>
+            </div>
+            {theme === 'dark' ? <Sun size={16} className="text-yellow-400" /> : <Moon size={16} className="text-blue-400" />}
+          </div>
           <button className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-[var(--bg-hover)] text-sm text-[var(--text-main)]">
             <HelpCircle size={18} />
             <span>帮助</span>
