@@ -1,0 +1,5 @@
+{
+  "name": "Gemini Pro Chat",
+  "description": "A full-featured Gemini clone with chat history, file uploads, and a polished UI.",
+  "requestFramePermissions": []
+}
