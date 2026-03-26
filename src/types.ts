@@ -11,6 +11,7 @@ export interface Attachment {
   type: string;
   data: string; // base64
   url: string;  // data URL
+  extractedText?: string;
 }
 
 export interface ChatSession {
