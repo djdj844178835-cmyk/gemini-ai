@@ -1682,8 +1682,24 @@ function ChatApp({
               </button>
               <button 
                 onClick={async () => {
-                  const loadingToast = toast.loading("正在测试连接...");
+                  const loadingToast = toast.loading("正在诊断连接...");
                   try {
+                    // 1. 测试后端是否在线
+                    const pingStart = Date.now();
+                    const pingRes = await fetch("/api/ping").catch(e => ({ ok: false, statusText: e.message }));
+                    const pingEnd = Date.now();
+                    
+                    if (!pingRes.ok) {
+                      toast.error(`后端服务不可达: ${pingRes.statusText}。请确保应用已正确部署并启动。`, { id: loadingToast });
+                      return;
+                    }
+                    
+                    const pingData = await (pingRes as Response).json().catch(() => ({}));
+                    console.log("Backend Ping:", pingData);
+
+                    // 2. 测试 AI 连接
+                    toast.loading(`后端已响应 (${pingEnd - pingStart}ms)，正在测试 AI 接口...`, { id: loadingToast });
+                    
                     const res = await fetch("/api/chat", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
@@ -1694,14 +1710,15 @@ function ChatApp({
                         messages: [{ role: "user", content: "ping" }]
                       })
                     });
+                    
                     if (res.ok) {
-                      toast.success("连接成功！", { id: loadingToast });
+                      toast.success("连接成功！后端与 AI 接口均正常。", { id: loadingToast });
                     } else {
                       const data = await res.json().catch(() => ({}));
-                      toast.error(`连接失败: ${data.error || res.status}`, { id: loadingToast });
+                      toast.error(`AI 接口报错: ${data.error || res.status}`, { id: loadingToast });
                     }
                   } catch (e: any) {
-                    toast.error(`网络错误: ${e.message}`, { id: loadingToast });
+                    toast.error(`诊断失败: ${e.message}`, { id: loadingToast });
                   }
                 }}
                 className="text-[9px] text-green-400 hover:underline"

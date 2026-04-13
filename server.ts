@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import multer from "multer";
 import fs from "fs";
 import cors from "cors";
+import fetch from "node-fetch";
 // @ts-ignore
 import dwg2dxfFactory from "dwg2dxf";
 
@@ -19,6 +20,12 @@ async function startServer() {
 
   app.use(express.json());
   app.use(cors());
+
+  // 健康检查
+  app.get("/api/ping", (req, res) => {
+    console.log("[Server] Ping received");
+    res.json({ status: "ok", message: "Express server is alive", time: new Date().toISOString() });
+  });
 
   // CAD 转换 API
   app.post("/api/cad/convert", upload.single("file"), async (req, res) => {
@@ -99,6 +106,7 @@ async function startServer() {
 
   // API 代理路由
   app.post("/api/chat", async (req, res) => {
+    console.log("[Proxy] Received request at /api/chat");
     const { messages, model, baseUrl: requestBaseUrl, apiKey: requestApiKey } = req.body;
 
     // 1. 获取并清理 API Key
