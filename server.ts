@@ -160,8 +160,13 @@ async function startServer() {
       res.end();
 
     } catch (error: any) {
-      console.error("[Proxy Fatal Error]", error);
-      res.status(500).json({ error: `代理请求失败: ${error.message}` });
+      console.error("[Proxy Fatal Error]", {
+        message: error.message,
+        stack: error.stack,
+        apiUrl: apiUrl,
+        model: model
+      });
+      res.status(500).json({ error: `代理请求失败: ${error.message} (请检查网络连接或 API 地址是否正确)` });
     }
   });
 

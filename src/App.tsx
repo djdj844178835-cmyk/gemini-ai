@@ -99,9 +99,9 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 // CAD Text Extraction Helper
 // CAD Viewer Modal for Chat
 const MODELS = [
-  { id: "[A渠道][12额度/次]gemini-3.1-pro-preview-maxthinking-search", name: "Gemini 3.1 Pro Search (0.1元/条)", desc: "12额度 | MaxThinking | Search" },
   { id: "[A渠道][1额度/次]gemini-3-flash-preview-maxthinking", name: "Gemini 3 Flash Max (0.008元/条)", desc: "1额度 | MaxThinking" },
   { id: "[A渠道][2额度/次][抗截断]gemini-3-flash-preview-maxthinking", name: "Gemini 3 Flash (抗截断) (0.1元/条)", desc: "2额度 | 抗截断" },
+  { id: "[A渠道][12额度/次]gemini-3.1-pro-preview-maxthinking-search", name: "Gemini 3.1 Pro Search (0.1元/条)", desc: "12额度 | MaxThinking | Search" },
 ];
 
 // ==========================================
@@ -364,9 +364,21 @@ function CostEngineerAI({
 }) {
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     const saved = localStorage.getItem('cost_ai_sessions');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
   });
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
+    const saved = localStorage.getItem('cost_ai_sessions');
+    try {
+      const parsed = saved ? JSON.parse(saved) : [];
+      return parsed.length > 0 ? parsed[0].id : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -378,6 +390,7 @@ function CostEngineerAI({
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -597,7 +610,7 @@ function CostEngineerAI({
         messages: [userMessage],
         updatedAt: Date.now()
       };
-      setSessions([newSession, ...sessions]);
+      setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(newSessionId);
       sessionId = newSessionId;
     } else {
@@ -614,6 +627,9 @@ function CostEngineerAI({
     }
 
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setAttachments([]);
     setIsLoading(true);
 
@@ -707,7 +723,11 @@ function CostEngineerAI({
       }
     } catch (error: any) {
       if (error.name === 'AbortError') return;
-      toast.error(`发送失败: ${error.message}`);
+      console.error("Gemini API Error:", error);
+      const errorMsg = error.message === 'Failed to fetch' 
+        ? '网络连接失败 (Failed to fetch)。请检查您的网络连接，或确保 API 地址 (Base URL) 正确且可访问。' 
+        : error.message;
+      toast.error(`发送失败: ${errorMsg}`);
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
@@ -1007,6 +1027,7 @@ function CostEngineerAI({
               
               <div className="flex-1 relative">
                 <textarea 
+                  ref={textareaRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
@@ -1041,8 +1062,23 @@ function ChatApp({
   setCustomModels: React.Dispatch<React.SetStateAction<{id: string, name: string, desc: string}[]>>;
   allModels: {id: string, name: string, desc: string}[];
 }) {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    const saved = localStorage.getItem('gemini_sessions');
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
+    const saved = localStorage.getItem('gemini_sessions');
+    try {
+      const parsed = saved ? JSON.parse(saved) : [];
+      return parsed.length > 0 ? parsed[0].id : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -1051,25 +1087,10 @@ function ChatApp({
   const [newModelId, setNewModelId] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const currentSession = sessions.find(s => s.id === currentSessionId);
-
-  // Load sessions from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('gemini_sessions');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setSessions(parsed);
-        if (parsed.length > 0) {
-          setCurrentSessionId(parsed[0].id);
-        }
-      } catch (e) {
-        console.error("Failed to parse sessions", e);
-      }
-    }
-  }, []);
 
   // Save sessions to localStorage
   useEffect(() => {
@@ -1356,6 +1377,9 @@ function ChatApp({
     }
 
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setAttachments([]);
     setIsLoading(true);
 
@@ -1494,10 +1518,13 @@ function ChatApp({
         return;
       }
       console.error("Gemini API Error:", error);
+      const errorMsg = error.message === 'Failed to fetch' 
+        ? '网络连接失败 (Failed to fetch)。请检查您的网络连接，或确保 API 地址 (Base URL) 正确且可访问。' 
+        : error.message;
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        content: `发生错误: ${error.message}`,
+        content: `发生错误: ${errorMsg}`,
         timestamp: Date.now()
       };
       setSessions(prev => prev.map(s => 
@@ -1932,6 +1959,7 @@ function ChatApp({
               className="bg-[var(--bg-input)] rounded-[28px] p-2 pl-6 flex items-end gap-2 border border-transparent focus-within:border-[var(--border-color)] transition-all"
             >
               <textarea 
+                ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onPaste={handlePaste}
