@@ -2,15 +2,98 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import multer from "multer";
+import fs from "fs";
+// @ts-ignore
+import dwg2dxfFactory from "dwg2dxf";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const upload = multer({ dest: "uploads/" });
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
+
+  // CAD 转换 API
+  app.post("/api/cad/convert", upload.single("file"), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "未上传文件" });
+    }
+
+    const { targetVersion } = req.body;
+    const inputPath = req.file.path;
+
+    try {
+      console.log(`[CAD] Starting conversion for: ${req.file.originalname}, size: ${req.file.size} bytes, target: ${targetVersion}`);
+      const dwgData = fs.readFileSync(inputPath);
+      
+      // @ts-ignore
+      const factory = dwg2dxfFactory.default || dwg2dxfFactory;
+      
+      // 加载 WASM 二进制文件
+      const wasmPath = path.join(__dirname, "node_modules/dwg2dxf/dist/dwg2dxf-wasm.wasm");
+      const wasmBinary = fs.readFileSync(wasmPath);
+
+      // 映射版本号
+      const versionMap: Record<string, string> = {
+        '2000': 'AC1015',
+        '2004': 'AC1018',
+        '2007': 'AC1021',
+        '2010': 'AC1024',
+        '2013': 'AC1027',
+        '2018': 'AC1032',
+        't3': 'AC1015' // T3 通常基于较旧版本
+      };
+
+      const versionArg = versionMap[targetVersion] || 'AC1015';
+      
+      const module = await factory({
+        wasmBinary: wasmBinary,
+        arguments: ['-v', versionArg, 'input.dwg', 'output.dxf'],
+        print: (text: string) => console.log(`[CAD WASM] ${text}`),
+        printErr: (text: string) => console.error(`[CAD WASM ERR] ${text}`)
+      });
+      
+      const dwgUint8 = new Uint8Array(dwgData);
+      module.FS.writeFile("input.dwg", dwgUint8);
+      
+      // 调用转换函数
+      // @ts-ignore
+      const result = module._dwg2dxf(); 
+      
+      // 检查输出文件
+      let outputName = "output.dxf";
+      if (!module.FS.analyzePath(outputName).exists && module.FS.analyzePath("a.dxf").exists) {
+        outputName = "a.dxf";
+      }
+
+      if (module.FS.analyzePath(outputName).exists) {
+        let dxfData = module.FS.readFile(outputName);
+        
+        // 尝试修复缺失 EOF 的问题
+        const dxfString = Buffer.from(dxfData).toString('utf-8');
+        if (!dxfString.trim().endsWith('EOF')) {
+          const fixedDxf = dxfString.trim() + '\n  0\nEOF\n';
+          dxfData = Buffer.from(fixedDxf, 'utf-8');
+        }
+
+        res.setHeader("Content-Type", "application/dxf");
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(req.file.originalname.replace(/\.dwg$/i, ".dxf"))}"`);
+        res.send(Buffer.from(dxfData));
+      } else {
+        throw new Error(`转换失败：未生成输出文件 (错误码: ${result})`);
+      }
+    } catch (error: any) {
+      console.error("[CAD Convert Error]", error);
+      res.status(500).json({ error: `转换失败: ${error.message}` });
+    } finally {
+      if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+    }
+  });
 
   // API 代理路由
   app.post("/api/chat", async (req, res) => {
