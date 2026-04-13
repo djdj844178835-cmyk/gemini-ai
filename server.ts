@@ -119,6 +119,7 @@ async function startServer() {
     console.log(`[Proxy] Requesting: ${apiUrl} | Model: ${model}`);
 
     try {
+      // @ts-ignore - Using global fetch in Node 18+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -135,7 +136,7 @@ async function startServer() {
       console.log(`[Proxy] Upstream status: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData: any = await response.json().catch(() => ({}));
         return res.status(response.status).json({ 
           error: errorData?.error?.message || errorData?.error || `上游报错: ${response.statusText}` 
         });
@@ -147,6 +148,7 @@ async function startServer() {
       res.setHeader('Connection', 'keep-alive');
 
       // 转发流
+      // @ts-ignore
       const reader = response.body?.getReader();
       if (!reader) {
         return res.status(500).json({ error: "无法读取上游流" });

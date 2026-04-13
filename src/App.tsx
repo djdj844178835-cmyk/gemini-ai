@@ -680,7 +680,19 @@ function CostEngineerAI({
         })
       });
 
-      if (!response.ok) throw new Error(`API 错误: ${response.status}`);
+      if (!response.ok) {
+        const text = await response.text();
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(text);
+        } catch (e) {
+          if (response.status === 504) {
+            throw new Error("请求超时 (504)：模型思考时间过长。建议切换到更快的模型。");
+          }
+          throw new Error(`服务器错误: ${response.status}`);
+        }
+        throw new Error(errorData.error || `服务器错误: ${response.status}`);
+      }
       
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -724,9 +736,11 @@ function CostEngineerAI({
     } catch (error: any) {
       if (error.name === 'AbortError') return;
       console.error("Gemini API Error:", error);
-      const errorMsg = error.message === 'Failed to fetch' 
-        ? '网络连接失败 (Failed to fetch)。请检查您的网络连接，或确保 API 地址 (Base URL) 正确且可访问。' 
-        : error.message;
+      const errorMsg = error.message.includes('internal error')
+        ? '网络连接失败 (Internal Error)。这通常是由于 API 地址错误或服务器无法访问导致的。请检查您的接口地址 (Base URL) 是否正确，并尝试点击“恢复默认设置”。'
+        : (error.message === 'Failed to fetch' 
+          ? '网络连接失败 (Failed to fetch)。请检查您的网络连接，或确保 API 地址 (Base URL) 正确且可访问。' 
+          : error.message);
       toast.error(`发送失败: ${errorMsg}`);
     } finally {
       setIsLoading(false);
@@ -1518,9 +1532,11 @@ function ChatApp({
         return;
       }
       console.error("Gemini API Error:", error);
-      const errorMsg = error.message === 'Failed to fetch' 
-        ? '网络连接失败 (Failed to fetch)。请检查您的网络连接，或确保 API 地址 (Base URL) 正确且可访问。' 
-        : error.message;
+      const errorMsg = error.message.includes('internal error')
+        ? '网络连接失败 (Internal Error)。这通常是由于 API 地址错误或服务器无法访问导致的。请检查您的接口地址 (Base URL) 是否正确，并尝试点击“恢复默认设置”。'
+        : (error.message === 'Failed to fetch' 
+          ? '网络连接失败 (Failed to fetch)。请检查您的网络连接，或确保 API 地址 (Base URL) 正确且可访问。' 
+          : error.message);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'model',

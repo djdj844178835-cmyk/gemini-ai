@@ -1,5 +1,5 @@
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
 };
 
 export default async function handler(req: Request) {
@@ -23,6 +23,12 @@ export default async function handler(req: Request) {
       baseUrlInput = `https://${baseUrlInput}`;
     }
     let finalBaseUrl = baseUrlInput.replace(/\/+$/, "");
+    
+    // 自动补全 /v1 (如果用户漏写)
+    if (!finalBaseUrl.endsWith("/v1") && !finalBaseUrl.includes("/v1/")) {
+      finalBaseUrl += "/v1";
+    }
+    
     const apiUrl = `${finalBaseUrl}/chat/completions`;
 
     console.log(`[Vercel Edge Proxy] Requesting: ${apiUrl} | Model: ${model}`);
@@ -61,8 +67,12 @@ export default async function handler(req: Request) {
 
   } catch (error: any) {
     console.error("[Vercel Edge Fatal Error]", error);
+    let detail = error.message;
+    if (error instanceof TypeError && error.message === 'fetch failed') {
+      detail = "无法连接到 API 服务器，请检查 Base URL 是否正确或服务器是否在线。";
+    }
     return new Response(JSON.stringify({ 
-      error: `网络连接失败: ${error.message}。请检查您的接口地址是否正确。` 
+      error: `网络连接失败: ${detail}。这通常是由于 API 地址错误、网络超时或跨域限制导致的。请检查您的接口地址 (Base URL) 是否正确。` 
     }), { 
       status: 500,
       headers: { 'Content-Type': 'application/json' }
