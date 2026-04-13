@@ -33,6 +33,9 @@ export default async function handler(req: Request) {
 
     console.log(`[Vercel Edge Proxy] Requesting: ${apiUrl} | Model: ${model}`);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
     // 3. 发起请求并支持流式传输
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -40,12 +43,15 @@ export default async function handler(req: Request) {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: model,
         messages: messages,
         stream: true, // 开启流式传输
       }),
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import fs from "fs";
+import cors from "cors";
 // @ts-ignore
 import dwg2dxfFactory from "dwg2dxf";
 
@@ -17,6 +18,7 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  app.use(cors());
 
   // CAD 转换 API
   app.post("/api/cad/convert", upload.single("file"), async (req, res) => {
@@ -119,6 +121,9 @@ async function startServer() {
     console.log(`[Proxy] Requesting: ${apiUrl} | Model: ${model}`);
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
       // @ts-ignore - Using global fetch in Node 18+
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -126,6 +131,7 @@ async function startServer() {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
+        signal: controller.signal,
         body: JSON.stringify({
           model: model,
           messages: messages,
@@ -133,6 +139,7 @@ async function startServer() {
         }),
       });
 
+      clearTimeout(timeoutId);
       console.log(`[Proxy] Upstream status: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {

@@ -1667,17 +1667,46 @@ function ChatApp({
               placeholder="https://new.xiaweiliang.cn/v1"
               className="w-full bg-[var(--bg-hover)] border border-transparent focus:border-[var(--text-secondary)] rounded-lg p-2 text-xs text-[var(--text-main)] outline-none"
             />
-            <div className="flex gap-2 mt-1 px-2">
+            <div className="flex flex-wrap gap-2 mt-1 px-2">
               <button 
                 onClick={() => {
                   setBaseUrl(DEFAULT_BASE_URL);
                   setApiKey(DEFAULT_API_KEY);
                   localStorage.setItem('gemini_base_url', DEFAULT_BASE_URL);
                   localStorage.setItem('gemini_api_key', DEFAULT_API_KEY);
+                  toast.success("已恢复默认设置");
                 }}
                 className="text-[9px] text-blue-400 hover:underline"
               >
                 恢复默认设置
+              </button>
+              <button 
+                onClick={async () => {
+                  const loadingToast = toast.loading("正在测试连接...");
+                  try {
+                    const res = await fetch("/api/chat", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        model: selectedModel,
+                        baseUrl: baseUrl,
+                        apiKey: apiKey,
+                        messages: [{ role: "user", content: "ping" }]
+                      })
+                    });
+                    if (res.ok) {
+                      toast.success("连接成功！", { id: loadingToast });
+                    } else {
+                      const data = await res.json().catch(() => ({}));
+                      toast.error(`连接失败: ${data.error || res.status}`, { id: loadingToast });
+                    }
+                  } catch (e: any) {
+                    toast.error(`网络错误: ${e.message}`, { id: loadingToast });
+                  }
+                }}
+                className="text-[9px] text-green-400 hover:underline"
+              >
+                测试连接
               </button>
             </div>
             <p className="px-2 text-[9px] text-[var(--text-secondary)]">
