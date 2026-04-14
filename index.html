@@ -1,13 +1,77 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 智能工作台</title>
+    <style>
+        :root {
+            --primary-bg: #f8faff;
+            --sidebar-color: #ffffff;
+            --accent-color: #a855f7; /* 紫色调 */
+            --text-color: #1e293b;
+        }
+        body { margin: 0; display: flex; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--primary-bg); overflow: hidden; }
+        
+        /* 左侧导航栏 */
+        #sidebar {
+            width: 240px;
+            background: var(--sidebar-color);
+            border-right: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.02);
+        }
+        .logo { font-size: 18px; font-weight: bold; color: var(--accent-color); margin-bottom: 30px; display: flex; align-items: center; gap: 8px; }
+        
+        .nav-group { flex: 1; }
+        .nav-item {
+            padding: 12px 15px;
+            margin-bottom: 5px;
+            border-radius: 8px;
+            color: var(--text-color);
+            text-decoration: none;
+            transition: all 0.2s;
+            display: flex; align-items: center; gap: 10px;
+            font-size: 14px;
+        }
+        .nav-item:hover { background: #f1f5f9; color: var(--accent-color); }
+        .nav-item.active { background: #f1f0ff; color: var(--accent-color); font-weight: bold; }
 
+        /* 右侧内容显示区 */
+        #main-container { flex: 1; position: relative; }
+        iframe { width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="logo">✨ AI 智能工作台</div>
+        
+        <div class="nav-group">
+            <a href="tools/welcome.html" target="main-frame" class="nav-item active">🏠 首页概览</a>
+            <a href="tools/heyi.html" target="main-frame" class="nav-item">⚖️ 多方合议专家</a>
+            </div>
+        
+        <div style="font-size: 12px; color: #94a3b8; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+            © 2026 数字化项目部
+        </div>
+    </div>
+
+    <div id="main-container">
+        <iframe name="main-frame" src="tools/welcome.html"></iframe>
+    </div>
+
+    <script>
+        // 处理菜单点击高亮
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            item.addEventListener('click', function() {
+                navItems.forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
